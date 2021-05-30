@@ -2,6 +2,7 @@ const WebSocket = require("ws");
 var models = require("./server.js").models;
 
 const ws = new WebSocket.Server({ port: 8080 });
+const clients = [];
 ws.on("connection", (ws) => {
   function login(email, pass) {
     models.User.login(
@@ -32,7 +33,13 @@ ws.on("connection", (ws) => {
                   })
                 );
               } else {
-                console.log(user);
+                const userObject = {
+                  id: user.id,
+                  email: user.email,
+                  ws: ws,
+                };
+                clients.push(userObject);
+                console.log("Current Clients:", clients);
                 ws.send(
                   JSON.stringify({
                     type: "LOGGEDIN",
@@ -70,7 +77,15 @@ ws.on("connection", (ws) => {
                   name: parsed.data.name,
                   email: parsed.data.email,
                 },
-                (profileError, profile) => {}
+                (profileError, profile) => {
+                  console.log("Profile Created:", profile);
+                  ws.send(
+                    JSON.stringify({
+                      type: "CREATED PROFILE",
+                      data: profile,
+                    })
+                  );
+                }
               );
             }
           });
@@ -79,6 +94,97 @@ ws.on("connection", (ws) => {
         case "LOGIN":
           login(parsed.data.email, parsed.data.password);
           break;
+
+        case "SEARCH":
+          console.log("Searching for:", parsed.data);
+          models.User.find(
+            { where: { email: { like: parsed.data } } },
+            (err, users) => {
+              if (!err && users) {
+                console.log("Got users:", users);
+                ws.send(
+                  JSON.stringify({
+                    type: "GOT_USERS",
+                    data: users,
+                  })
+                );
+              }
+            }
+          );
+          break;
+
+        case "FIND_THREAD":
+          models.thread.findOne(
+            {
+              where: {
+                and: [
+                  { users: { like: parsed.data[0] } },
+                  { users: { like: parsed.data[1] } },
+                ],
+              },
+            },
+            (err, thread) => {
+              if (!err && thread) {
+                ws.send(
+                  JSON.stringify({
+                    type: "ADD_THREAD",
+                    data: thread,
+                  })
+                );
+              } else {
+                models.thread.create(
+                  {
+                    lastUpdated: new Date(),
+                    users: parsed.data,
+                  },
+                  (err2, thread) => {
+                    if (!err2 && thread) {
+                      clients
+                        .filter(
+                          (u) => thread.users.indexOf(u.id.toString()) > -1
+                        )
+                        .map((client) => {
+                          console.log("Client:", client);
+                          client.ws.send(
+                            JSON.stringify({
+                              type: "ADD_THREAD",
+                              data: thread,
+                            })
+                          );
+                        });
+                    }
+                  }
+                );
+              }
+            }
+          );
+          break;
+
+        case "CONNECT_WITH_TOKEN":
+          models.User.findById(parsed.data.userId, (err2, user) => {
+            if (!err2 && user) {
+              const userObject = {
+                id: user.id,
+                email: user.email,
+                ws: ws,
+              };
+              clients.push(userObject);
+              console.log("Current Clients:", clients);
+              ws.send(
+                JSON.stringify({
+                  type: "LOGGEDIN",
+                  data: {
+                    session: res,
+                    user: user,
+                  },
+                })
+              );
+            }
+          });
+          break;
+
+        // case 'THREAD_LOAD':
+
         default:
           console.log("Nothing to see here");
       }
