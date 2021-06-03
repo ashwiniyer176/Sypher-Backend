@@ -14,10 +14,25 @@
     },
     "seenBy": {
       "type": "object"
+    },
+    "userId":{
+      "type":"string"
     }
   },
-  "validations": [],
-  "relations": {},
+  "validations": [
+  ],
+  "relations": {
+    "thread":{
+      "type":"belongsTo",
+      "model":"thread",
+      "foreignKey":"threadId"
+    },
+    "User":{
+      "type":"belongsTo",
+      "model":"User",
+      "foreignKey":"userId"
+    }
+  },
   "acls": [],
   "methods": {}
 }
